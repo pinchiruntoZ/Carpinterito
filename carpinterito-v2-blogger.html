@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>El Carpinterito - madera-fina</title>
+<style>
+*{margin:0;padding:0;box-sizing:border-box;}
+body{background:#1A0C04;min-height:100vh;display:flex;flex-direction:column;
+  align-items:center;justify-content:center;font-family:Georgia,serif;
+  padding:10px;user-select:none;}
+#wrap{display:flex;flex-direction:column;align-items:center;width:100%;max-width:620px;}
+#title-blog{font-size:10px;color:#6B3F1A;letter-spacing:3px;text-transform:uppercase;margin-bottom:2px;text-align:center;}
+#title-main{font-size:24px;font-weight:bold;color:#E8A020;text-align:center;}
+#title-sub{font-size:11px;letter-spacing:2px;text-transform:uppercase;text-align:center;margin-bottom:5px;min-height:15px;color:#E8A020;}
+#hud{display:none;gap:10px;margin-bottom:4px;background:rgba(0,0,0,0.5);
+  border-radius:8px;padding:4px 12px;font-size:13px;color:#F5E6C8;
+  align-items:center;flex-wrap:wrap;justify-content:center;}
+#hit-msg{color:#FF6B6B;font-size:13px;font-weight:bold;min-height:16px;text-align:center;}
+#prog-wrap{height:7px;border-radius:6px;margin-bottom:4px;background:rgba(0,0,0,0.4);
+  overflow:hidden;display:none;}
+#prog-bar{height:100%;width:0%;border-radius:6px;background:linear-gradient(90deg,#E8A020,#FFD700);transition:width 0.3s;}
+canvas{display:none;border-radius:6px;border:3px solid #E8A020;max-width:100%;}
+#dpad{display:none;margin-top:8px;flex-direction:column;align-items:center;gap:3px;}
+#dpad-mid{display:flex;gap:3px;}
+.db{width:48px;height:48px;font-size:18px;background:rgba(139,94,60,0.8);
+  color:#F5E6C8;border:2px solid #5C3A1E;border-radius:8px;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;touch-action:none;
+  -webkit-tap-highlight-color:transparent;}
+#dc{width:48px;height:48px;background:rgba(0,0,0,0.4);border-radius:8px;
+  display:flex;align-items:center;justify-content:center;font-size:18px;}
+#toolbox{display:none;margin-top:6px;background:rgba(0,0,0,0.5);border-radius:8px;
+  padding:5px 10px;width:100%;}
+#tb-title{font-size:11px;margin-bottom:3px;}
+#tb-items{display:flex;flex-wrap:wrap;gap:3px;}
+#hint-bar{display:none;margin-top:4px;font-size:11px;color:rgba(139,94,60,0.7);gap:10px;justify-content:center;}
+
+/* SCREENS */
+.scr{display:none;background:#1A0C04;border-radius:14px;padding:22px 26px;
+  text-align:center;max-width:340px;width:100%;}
+.scr.on{display:block;}
+.sbtn{border:none;border-radius:10px;padding:11px 28px;font-size:15px;
+  cursor:pointer;font-weight:bold;font-family:Georgia,serif;margin-top:8px;display:inline-block;}
+.sbtn2{background:transparent;color:#8B5E3C;border:1px solid #5C3A1E;
+  border-radius:10px;padding:9px;font-size:13px;cursor:pointer;
+  width:100%;margin-top:8px;font-family:Georgia,serif;}
+#lvl-list{margin-bottom:12px;text-align:left;}
+.lvl-row{display:flex;align-items:baseline;gap:6px;margin-bottom:4px;
+  padding:4px 8px;border-radius:6px;}
+
+/* WIN */
+#dfloor{background:#2B1A0A;border-radius:10px;border:2px solid #E8A020;
+  padding:12px 6px;margin-bottom:10px;overflow:hidden;}
+#dtitle{font-size:10px;color:#8B5E3C;letter-spacing:2px;text-transform:uppercase;margin-bottom:8px;}
+#dancers{display:flex;justify-content:center;gap:3px;flex-wrap:wrap;}
+.dn{font-size:24px;display:inline-block;transition:transform 0.35s ease-in-out;}
+#demoji{font-size:18px;margin-top:8px;transition:transform 0.35s;}
+</style>
+</head>
+<body>
+<div id="wrap">
+  <div id="title-blog">madera-fina.blogspot.com</div>
+  <div id="title-main">&#x1F9D1;&#x200D;&#x1F527; El Carpinterito</div>
+  <div id="title-sub"></div>
+  <div id="hud" style="display:none"></div>
+  <div id="hit-msg"></div>
+  <div id="prog-wrap" style="display:none"><div id="prog-bar"></div></div>
+  <canvas id="cv"></canvas>
+  <div id="dpad" style="display:none">
+    <button class="db" id="bu">&#9650;</button>
+    <div id="dpad-mid">
+      <button class="db" id="bl">&#9664;</button>
+      <div id="dc">&#x1F9F0;</div>
+      <button class="db" id="br">&#9654;</button>
+    </div>
+    <button class="db" id="bd">&#9660;</button>
+  </div>
+  <div id="toolbox"><div id="tb-title"></div><div id="tb-items"></div></div>
+  <div id="hint-bar" style="display:none">
+    <span>&#x1FAA3; Barniz = congela 4s</span>
+    <span>&#x1F41B; Termita = pierde vida</span>
+  </div>
+
+  <!-- MENU -->
+  <div class="scr on" id="s-menu" style="border:3px solid #6B3F1A">
+    <div style="font-size:9px;color:#6B3F1A;letter-spacing:3px;margin-bottom:5px">MADERA-FINA.BLOGSPOT.COM</div>
+    <div style="font-size:48px;margin-bottom:3px">&#x1F9D1;&#x200D;&#x1F527;</div>
+    <div style="font-size:22px;color:#E8A020;font-weight:bold;margin-bottom:5px">El Carpinterito</div>
+    <div style="color:#F5E6C8;font-size:12px;line-height:1.8;margin-bottom:12px">
+      Recorre el taller y recoge todas las herramientas.<br>
+      <span style="color:#4FC3F7">&#x1FAA3; Barniz = congela termitas 4s</span><br>
+      <span style="color:#E84040">&#x1F41B; Cuidado con Polilla y Carcoma!</span>
+    </div>
+    <div id="lvl-list"></div>
+    <div id="m-best" style="color:#FFD700;font-size:13px;margin-bottom:8px;display:none"></div>
+    <button class="sbtn" id="btn-play" style="background:linear-gradient(135deg,#E8A020,#A06010);color:#1A0C04;font-size:16px;padding:12px 36px">JUGAR!</button>
+    <div style="color:#5C3A1E;font-size:11px;margin-top:8px">Teclado flechas / Movil: botones o desliza</div>
+  </div>
+
+  <!-- LEVEL UP -->
+  <div class="scr" id="s-lu">
+    <div style="font-size:44px">&#x1F3C6;</div>
+    <div id="lu-t" style="font-size:19px;font-weight:bold;margin:7px 0"></div>
+    <div id="lu-s" style="color:#F5E6C8;font-size:13px;margin-bottom:5px"></div>
+    <div style="color:#8B5E3C;font-size:12px;margin-bottom:3px">Siguiente nivel:</div>
+    <div id="lu-nn" style="color:#F5E6C8;font-size:15px;font-weight:bold;margin-bottom:2px"></div>
+    <div id="lu-ns" style="font-size:12px;margin-bottom:10px"></div>
+    <div id="lu-nt" style="font-size:18px;margin-bottom:14px"></div>
+    <button class="sbtn" id="btn-nl">Siguiente nivel &rarr;</button>
+  </div>
+
+  <!-- GAME OVER -->
+  <div class="scr" id="s-go" style="border:3px solid #8B2020">
+    <div style="font-size:44px">&#x1F635;</div>
+    <div style="color:#E84040;font-size:19px;font-weight:bold;margin:7px 0">Las termitas ganaron!</div>
+    <div id="go-s" style="color:#F5E6C8;font-size:13px;margin-bottom:7px"></div>
+    <div id="go-r" style="color:#FFD700;font-size:12px;margin-bottom:7px;display:none">Nuevo record!</div>
+    <button class="sbtn" id="btn-rt" style="background:linear-gradient(135deg,#E8A020,#A06010);color:#1A0C04">Volver a intentar</button>
+    <button class="sbtn2" id="btn-gm">Menu principal</button>
+  </div>
+
+  <!-- WIN -->
+  <div class="scr" id="s-win" style="border:3px solid #FFD700">
+    <div style="font-size:32px;margin-bottom:3px">&#x1F947;&#x1F3C6;&#x1F947;</div>
+    <div style="font-size:20px;color:#FFD700;font-weight:bold;margin-bottom:2px">Maestro Carpintero!</div>
+    <div style="font-size:12px;color:#E8A020;margin-bottom:12px;letter-spacing:1px">madera-fina.blogspot.com</div>
+    <div id="dfloor">
+      <div id="dtitle">CLUB DE LOS CARPINTERITOS FELICES</div>
+      <div id="dancers"></div>
+      <div id="demoji">&#x1F389;&#x1FAB5;&#x1F38A;&#x1F528;&#x1F389;</div>
+    </div>
+    <div id="win-s" style="color:#F5E6C8;font-size:13px;margin-bottom:12px"></div>
+    <button class="sbtn" id="btn-wp" style="background:linear-gradient(135deg,#FFD700,#C07010);color:#1A0C04">Jugar de nuevo</button>
+  </div>
+</div>
+
+<script>
+(function(){
+var COLS=19,ROWS=17,CELL=30;
+var MAZE=[
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1],
+  [1,0,0,0,0,0,0,0,0,1,0,0,0,0,0,0,0,0,1],
+  [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+  [1,0,1,1,0,1,1,1,0,1,0,1,1,1,0,1,1,0,1],
+  [1,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,0,1],
+  [1,0,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,0,1],
+  [1,0,0,0,0,1,0,0,0,1,0,0,0,1,0,0,0,0,1],
+  [1,1,1,1,0,1,1,1,0,0,0,1,1,1,0,1,1,1,1],
+  [1,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,1,1,1],
+  [1,1,1,1,0,1,0,1,1,0,1,1,0,1,0,1,1,1,1],
+  [1,1,1,1,0,0,0,1,0,0,0,1,0,0,0,1,1,1,1],
+  [1,1,1,1,0,1,0,1,1,1,1,1,0,1,0,1,1,1,1],
+  [1,1,1,1,0,1,0,0,0,0,0,0,0,1,0,1,1,1,1],
+  [1,0,0,0,0,1,0,1,1,1,1,1,0,1,0,0,0,0,1],
+  [1,0,1,1,0,0,0,0,0,0,0,0,0,0,0,1,1,0,1],
+  [1,0,0,1,0,1,0,1,1,1,1,1,0,1,0,1,0,0,1],
+  [1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1,1]
+];
+
+var LV=[
+  {name:"Aprendiz",      sub:"Herramientas Manuales",    n:1,tm:1,sp:440,nd:8,
+   tools:["\uD83D\uDD28","\uD83D\uDCD0","\u2702\uFE0F","\uD83E\uDE9B","\uD83D\uDCCF","\uD83D\uDDDC\uFE0F","\uD83E\uDE9A","\uD83D\uDD29"],
+   wc:"#7B5E3A",wt:"#A0804F",pA:"#2C1A08",pB:"#331E0A",ac:"#E8A020",isT:false},
+  {name:"Oficial",       sub:"Herramientas Electricas",  n:2,tm:2,sp:350,nd:10,
+   tools:["\uD83E\uDE9A","\uD83D\uDD0C","\uD83D\uDD0B","\uD83D\uDCA1","\u26A1","\uD83D\uDD26","\uD83D\uDCE1","TV"],
+   wc:"#3A5E7B",wt:"#4F80A0",pA:"#081828",pB:"#0A1E33",ac:"#20C8E8",isT:false},
+  {name:"Constructor",   sub:"Materiales de Carpinteria",n:3,tm:2,sp:300,nd:12,
+   tools:["MDF","MEL","MDR","TRP","OSB","PLY","DM","HDF"],
+   wc:"#5E7B3A",wt:"#80A04F",pA:"#101F08",pB:"#13260A",ac:"#90E820",isT:true},
+  {name:"Pintor",        sub:"Lacas, Barnices y Pinturas",n:4,tm:3,sp:260,nd:12,
+   tools:["\uD83C\uDFA8","\uD83D\uDD8C\uFE0F","\uD83E\uFAA3","\uD83D\uDFE3","\uD83D\uDD34","\uD83D\uDFE1","\uD83D\uDFE2","\uD83D\uDD35"],
+   wc:"#7B3A6E",wt:"#A04F98",pA:"#200818",pB:"#280A1E",ac:"#E820C8",isT:false},
+  {name:"Maestro Carpintero",sub:"Maquinas Industriales",n:5,tm:3,sp:190,nd:16,
+   tools:["\u2699\uFE0F","\uD83D\uDD29","\uD83C\uDF97\uFE0F","\uD83E\uDDE2","\uD83E\uDEA4","\uD83D\uDD27","\u26CF\uFE0F","\uD83D\uDEE0\uFE0F"],
+   wc:"#5A5A5A",wt:"#888",pA:"#111",pB:"#161616",ac:"#FFD700",isT:false}
+];
+
+var TN=["Polilla","Carcoma","Rona","Comejen","Xilofaga"];
+var PS={x:1,y:1};
+var D4=[{x:1,y:0},{x:-1,y:0},{x:0,y:1},{x:0,y:-1}];
+
+var G={scr:"menu",li:0,best:0,
+  px:1,py:1,pdx:1,pdy:0,
+  tools:[],barniz:null,collected:[],
+  termites:[],lives:3,score:0,
+  frozenUntil:0,hitMsg:"",hitMsgUntil:0,
+  inp:{x:0,y:0},
+  pLoop:null,tLoops:[],dTimer:null,dFrame:0
+};
+
+var cv=document.getElementById("cv");
+var ctx=cv.getContext("2d");
+
+function isWall(x,y){return y<0||y>=ROWS||x<0||x>=COLS||MAZE[y][x]===1;}
+
+function pathCells(){
+  var c=[];
+  for(var r=0;r<ROWS;r++) for(var col=0;col<COLS;col++)
+    if(MAZE[r][col]===0) c.push({x:col,y:r});
+  return c;
+}
+
+function randPath(ex){
+  ex=ex||[];
+  var c=pathCells().filter(function(p){
+    return !ex.some(function(e){return e.x===p.x&&e.y===p.y;});
+  });
+  if(!c.length) return {x:1,y:1};
+  return c[Math.floor(Math.random()*c.length)];
+}
+
+function bfsNext(fx,fy,tx,ty){
+  if(fx===tx&&fy===ty) return {x:fx,y:fy};
+  var vis=[];
+  for(var i=0;i<ROWS;i++){vis.push([]);for(var j=0;j<COLS;j++)vis[i].push(false);}
+  var q=[{x:fx,y:fy,px:-1,py:-1}]; vis[fy][fx]=true;
+  var prev={};
+  prev[fy+","+fx]={x:-1,y:-1};
+  while(q.length){
+    var cur=q.shift();
+    for(var d=0;d<D4.length;d++){
+      var nx=cur.x+D4[d].x,ny=cur.y+D4[d].y;
+      if(!isWall(nx,ny)&&!vis[ny][nx]){
+        vis[ny][nx]=true;
+        prev[ny+","+nx]={x:cur.x,y:cur.y};
+        if(nx===tx&&ny===ty){
+          var step={x:nx,y:ny};
+          while(prev[step.y+","+step.x].x!==fx||prev[step.y+","+step.x].y!==fy){
+            var p=prev[step.y+","+step.x];
+            if(p.x===-1) return {x:fx,y:fy};
+            step=p;
+          }
+          return step;
+        }
+        q.push({x:nx,y:ny});
+      }
+    }
+  }
+  return {x:fx,y:fy};
+}
+
+function snd(type){
+  try{
+    var AC=window.AudioContext||window.webkitAudioContext;
+    if(!AC) return;
+    var ctx2=new AC();
+    var o=ctx2.createOscillator(),g=ctx2.createGain();
+    o.connect(g);g.connect(ctx2.destination);
+    var t=ctx2.currentTime;
+    if(type==="collect"){
+      o.frequency.setValueAtTime(550,t);o.frequency.exponentialRampToValueAtTime(1100,t+0.12);
+      g.gain.setValueAtTime(0.2,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.15);
+      o.start();o.stop(t+0.15);
+    } else if(type==="hit"){
+      o.type="sawtooth";o.frequency.setValueAtTime(220,t);o.frequency.exponentialRampToValueAtTime(55,t+0.3);
+      g.gain.setValueAtTime(0.35,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.3);
+      o.start();o.stop(t+0.3);
+    } else if(type==="freeze"){
+      o.frequency.setValueAtTime(900,t);o.frequency.exponentialRampToValueAtTime(300,t+0.5);
+      g.gain.setValueAtTime(0.25,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.5);
+      o.start();o.stop(t+0.5);
+    } else if(type==="levelup"){
+      [523,659,784,1047].forEach(function(f,i){
+        var o2=ctx2.createOscillator(),g2=ctx2.createGain();
+        o2.connect(g2);g2.connect(ctx2.destination);
+        o2.frequency.value=f;
+        g2.gain.setValueAtTime(0.18,t+i*0.12);
+        g2.gain.exponentialRampToValueAtTime(0.001,t+i*0.12+0.18);
+        o2.start(t+i*0.12);o2.stop(t+i*0.12+0.18);
+      });
+    }
+  }catch(e){}
+}
+
+function initLevel(idx){
+  G.li=idx;
+  var lv=LV[idx];
+  var ex=[PS];
+  G.tools=[];
+  for(var i=0;i<lv.nd+5;i++){
+    var p=randPath(ex.concat(G.tools));
+    G.tools.push({x:p.x,y:p.y,label:lv.tools[i%lv.tools.length]});
+  }
+  G.barniz=randPath(ex.concat(G.tools));
+  var far=pathCells().filter(function(c){
+    return Math.abs(c.x-PS.x)+Math.abs(c.y-PS.y)>8;
+  });
+  G.termites=[];
+  for(var j=0;j<lv.tm;j++){
+    var idx2=Math.floor(Math.random()*far.length);
+    G.termites.push({x:far[idx2].x,y:far[idx2].y,name:TN[j%TN.length]});
+  }
+  G.px=PS.x;G.py=PS.y;G.pdx=1;G.pdy=0;
+  G.collected=[];G.lives=3;G.score=0;
+  G.frozenUntil=0;G.hitMsg="";G.hitMsgUntil=0;
+  G.inp={x:0,y:0};
+}
+
+// ── CANVAS DRAW ──────────────────────────────────────────────────────────────
+function draw(){
+  var lv=LV[G.li];
+  var frozen=Date.now()<G.frozenUntil;
+  ctx.clearRect(0,0,cv.width,cv.height);
+
+  // tiles
+  for(var r=0;r<ROWS;r++){
+    for(var c=0;c<COLS;c++){
+      var px=c*CELL,py2=r*CELL;
+      if(MAZE[r][c]===1){
+        ctx.fillStyle=lv.wc;
+        ctx.fillRect(px,py2,CELL,CELL);
+        ctx.fillStyle=lv.wt;
+        ctx.fillRect(px,py2,CELL,3);
+        ctx.fillRect(px,py2,3,CELL);
+      } else {
+        ctx.fillStyle=(c+r)%2===0?lv.pA:lv.pB;
+        ctx.fillRect(px,py2,CELL,CELL);
+      }
+    }
+  }
+
+  // tools
+  var now=Date.now();
+  var pulse=0.9+0.1*Math.sin(now/300);
+  G.tools.forEach(function(t){
+    var cx2=t.x*CELL+CELL/2, cy2=t.y*CELL+CELL/2;
+    ctx.save();
+    ctx.translate(cx2,cy2);
+    ctx.scale(pulse,pulse);
+    if(lv.isT){
+      ctx.fillStyle="rgba(0,0,0,0.6)";
+      ctx.beginPath();
+      ctx.roundRect(-12,-8,24,16,3);
+      ctx.fill();
+      ctx.fillStyle=lv.ac;
+      ctx.font="bold 8px Arial";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText(t.label,0,0);
+    } else {
+      ctx.font=CELL*0.55+"px serif";
+      ctx.textAlign="center";
+      ctx.textBaseline="middle";
+      ctx.fillText(t.label,0,0);
+    }
+    ctx.restore();
+  });
+
+  // barniz
+  if(G.barniz){
+    var bpulse=0.9+0.15*Math.sin(now/200);
+    ctx.save();
+    ctx.translate(G.barniz.x*CELL+CELL/2, G.barniz.y*CELL+CELL/2);
+    ctx.scale(bpulse,bpulse);
+    ctx.shadowColor="#4FC3F7";
+    ctx.shadowBlur=8;
+    ctx.font=CELL*0.55+"px serif";
+    ctx.textAlign="center";
+    ctx.textBaseline="middle";
+    ctx.fillText("\uD83E\uFAA3",0,0);
+    ctx.restore();
+  }
+
+  // termites
+  G.termites.forEach(function(t){
+    ctx.save();
+    ctx.translate(t.x*CELL+CELL/2, t.y*CELL+CELL/2);
+    if(frozen){
+      ctx.globalAlpha=0.7;
+      ctx.shadowColor="#4FC3F7";ctx.shadowBlur=8;
+      ctx.font=CELL*0.5+"px serif";
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText("\u2744\uFE0F",0,0);
+    } else {
+      ctx.shadowColor="rgba(255,50,50,0.8)";ctx.shadowBlur=6;
+      ctx.font=CELL*0.5+"px serif";
+      ctx.textAlign="center";ctx.textBaseline="middle";
+      ctx.fillText("\uD83D\uDC1B",0,0);
+    }
+    ctx.restore();
+  });
+
+  // player
+  ctx.save();
+  ctx.translate(G.px*CELL+CELL/2, G.py*CELL+CELL/2);
+  if(G.pdx===-1) ctx.scale(-1,1);
+  ctx.shadowColor=lv.ac;ctx.shadowBlur=8;
+  ctx.font=CELL*0.65+"px serif";
+  ctx.textAlign="center";ctx.textBaseline="middle";
+  ctx.fillText("\uD83E\uDDD1\u200D\uD83D\uDD27",0,0);
+  ctx.restore();
+
+  // HUD update
+  var hearts="";for(var h=0;h<G.lives;h++) hearts+="\u2764\uFE0F";
+  var hudEl=document.getElementById("hud");
+  hudEl.innerHTML=
+    '<span style="color:#F5E6C8">\u2B50 '+G.score+'</span>'+
+    '<span style="color:#FFD700">\uD83C\uDFC6 '+G.best+'</span>'+
+    '<span style="color:'+lv.ac+';font-weight:bold">Nivel '+lv.n+' de 5 &mdash; '+lv.name+'</span>'+
+    '<span>'+hearts+'</span>'+
+    (frozen?'<span style="color:#4FC3F7;font-weight:bold">\u2744\uFE0F CONGELADAS</span>':'');
+
+  // hit msg
+  var hm=document.getElementById("hit-msg");
+  if(G.hitMsg&&Date.now()<G.hitMsgUntil){
+    hm.textContent="\uD83D\uDE35 "+G.hitMsg;
+  } else { hm.textContent=""; }
+
+  // progress
+  var pct=Math.min(G.collected.length/lv.nd,1)*100;
+  document.getElementById("prog-bar").style.width=pct+"%";
+
+  // toolbox
+  var tb=document.getElementById("toolbox");
+  var tbt=document.getElementById("tb-title");
+  var tbi=document.getElementById("tb-items");
+  if(G.collected.length>0){
+    tb.style.display="block";
+    tbt.style.color=lv.ac;
+    tbt.textContent="\uD83E\uDDF0 "+G.collected.length+"/"+lv.nd+" \u2014 "+lv.sub;
+    tbi.innerHTML="";
+    G.collected.forEach(function(t){
+      var sp=document.createElement("span");
+      sp.style.cssText="background:rgba(139,94,60,0.6);border-radius:4px;padding:"+(lv.isT?"2px 3px":"1px 3px")+";border:1px solid "+lv.ac+"88;font-size:"+(lv.isT?"9px":"14px")+";color:"+(lv.isT?lv.ac:"inherit")+";font-weight:bold";
+      sp.textContent=t.label;
+      tbi.appendChild(sp);
+    });
+  } else { tb.style.display="none"; }
+}
+
+var rafId=null;
+function loop(){
+  draw();
+  rafId=requestAnimationFrame(loop);
+}
+
+function stopAll(){
+  if(G.pLoop) clearInterval(G.pLoop);
+  G.tLoops.forEach(function(t){clearInterval(t);});
+  G.tLoops=[];
+  if(rafId) cancelAnimationFrame(rafId);
+}
+
+function startPlayerLoop(){
+  if(G.pLoop) clearInterval(G.pLoop);
+  G.pLoop=setInterval(function(){
+    if(G.scr!=="playing") return;
+    var dx=G.inp.x,dy=G.inp.y;
+    if(dx===0&&dy===0) return;
+    var nx=G.px+dx,ny=G.py+dy;
+    if(isWall(nx,ny)) return;
+
+    // tool pickup
+    var lv=LV[G.li];
+    var ti=-1;
+    for(var i=0;i<G.tools.length;i++){
+      if(G.tools[i].x===nx&&G.tools[i].y===ny){ti=i;break;}
+    }
+    if(ti!==-1){
+      snd("collect");
+      G.collected.push(G.tools[ti]);
+      G.tools.splice(ti,1);
+      G.score+=10*(G.li+1);
+    }
+
+    // barniz
+    if(G.barniz&&nx===G.barniz.x&&ny===G.barniz.y){
+      snd("freeze");
+      G.frozenUntil=Date.now()+4000;
+      G.barniz=randPath([{x:nx,y:ny}].concat(G.tools).concat(G.termites));
+    }
+
+    G.px=nx;G.py=ny;G.pdx=dx;G.pdy=dy;
+
+    if(G.collected.length>=lv.nd){
+      snd("levelup");
+      if(G.score>G.best) G.best=G.score;
+      stopAll();
+      if(G.li>=LV.length-1){ showWin(); }
+      else { showLU(); }
+    }
+  },130);
+}
+
+function startTermLoops(){
+  G.tLoops.forEach(function(t){clearInterval(t);});
+  G.tLoops=[];
+  var lv=LV[G.li];
+  for(var i=0;i<lv.tm;i++){
+    (function(idx){
+      var t=setInterval(function(){
+        if(G.scr!=="playing") return;
+        if(Date.now()<G.frozenUntil) return;
+        var term=G.termites[idx]; if(!term) return;
+        var nxt=bfsNext(term.x,term.y,G.px,G.py);
+        G.termites[idx].x=nxt.x;
+        G.termites[idx].y=nxt.y;
+        for(var j=0;j<G.termites.length;j++){
+          if(G.termites[j].x===G.px&&G.termites[j].y===G.py){
+            snd("hit");
+            G.lives--;
+            var hn=G.termites[j].name;
+            if(G.lives<=0){
+              if(G.score>G.best) G.best=G.score;
+              stopAll();
+              showGO();
+              return;
+            }
+            G.px=PS.x;G.py=PS.y;
+            G.hitMsg=""+hn+" te atrapo!";
+            G.hitMsgUntil=Date.now()+2000;
+            break;
+          }
+        }
+      },lv.sp);
+      G.tLoops.push(t);
+    })(i);
+  }
+}
+
+// ── SCREEN HELPERS ────────────────────────────────────────────────────────────
+function hideAll(){
+  ["s-menu","s-lu","s-go","s-win"].forEach(function(id){
+    var el=document.getElementById(id);
+    el.className=el.className.replace(" on","").replace("on","").trim();
+  });
+}
+function showScr(id){
+  hideAll();
+  var el=document.getElementById(id);
+  el.className+=" on";
+}
+
+function showMenu(){
+  stopAll();
+  cv.style.display="none";
+  document.getElementById("dpad").style.display="none";
+  document.getElementById("hud").style.display="none";
+  document.getElementById("prog-wrap").style.display="none";
+  document.getElementById("toolbox").style.display="none";
+  document.getElementById("hint-bar").style.display="none";
+  document.getElementById("hit-msg").textContent="";
+  document.getElementById("title-sub").textContent="";
+  document.getElementById("title-main").style.color="#E8A020";
+  if(G.best>0){
+    var mb=document.getElementById("m-best");
+    mb.textContent="\uD83C\uDFC6 Record: "+G.best+" pts";
+    mb.style.display="block";
+  }
+  showScr("s-menu");
+  G.scr="menu";
+}
+
+function startPlaying(idx){
+  initLevel(idx);
+  var lv=LV[idx];
+  hideAll();
+  cv.width=COLS*CELL; cv.height=ROWS*CELL;
+  cv.style.display="block";
+  cv.style.borderColor=lv.ac;
+  cv.style.boxShadow="0 0 20px "+lv.ac+"44";
+  document.getElementById("prog-wrap").style.display="block";
+  document.getElementById("prog-wrap").style.width=(COLS*CELL)+"px";
+  document.getElementById("hud").style.display="flex";
+  document.getElementById("dpad").style.display="flex";
+  document.getElementById("hint-bar").style.display="flex";
+  document.getElementById("title-sub").textContent="Nivel "+lv.n+" de 5: "+lv.sub;
+  document.getElementById("title-sub").style.color=lv.ac;
+  document.getElementById("title-main").style.color=lv.ac;
+  G.scr="playing";
+  loop();
+  startPlayerLoop();
+  startTermLoops();
+}
+
+function showLU(){
+  var lv=LV[G.li];
+  var nx=LV[G.li+1];
+  document.getElementById("lu-t").textContent="Nivel "+lv.n+" completado!";
+  document.getElementById("lu-t").style.color=lv.ac;
+  document.getElementById("lu-s").textContent="Puntos: "+G.score;
+  document.getElementById("lu-nn").textContent=nx.name;
+  document.getElementById("lu-ns").textContent=nx.sub;
+  document.getElementById("lu-ns").style.color=nx.ac;
+  document.getElementById("btn-nl").style.background="linear-gradient(135deg,"+nx.ac+",#805010)";
+  var nt="";
+  nx.tools.slice(0,5).forEach(function(t){
+    if(nx.isT){
+      nt+='<span style="font-size:9px;color:'+nx.ac+';background:rgba(0,0,0,0.4);padding:2px 4px;border-radius:3px;margin:0 2px">'+t+'</span>';
+    } else { nt+='<span style="margin:0 2px">'+t+'</span>'; }
+  });
+  document.getElementById("lu-nt").innerHTML=nt;
+  document.getElementById("s-lu").style.border="3px solid "+lv.ac;
+  cv.style.display="none";
+  document.getElementById("dpad").style.display="none";
+  document.getElementById("hud").style.display="none";
+  document.getElementById("prog-wrap").style.display="none";
+  document.getElementById("toolbox").style.display="none";
+  document.getElementById("hint-bar").style.display="none";
+  showScr("s-lu");
+  G.scr="levelup";
+}
+
+function showGO(){
+  document.getElementById("go-s").innerHTML='Puntos: <strong style="color:#E8A020">'+G.score+'</strong>';
+  var rec=document.getElementById("go-r");
+  rec.style.display=(G.score>=G.best&&G.best>0)?"block":"none";
+  cv.style.display="none";
+  document.getElementById("dpad").style.display="none";
+  document.getElementById("hud").style.display="none";
+  document.getElementById("prog-wrap").style.display="none";
+  document.getElementById("toolbox").style.display="none";
+  document.getElementById("hint-bar").style.display="none";
+  showScr("s-go");
+  G.scr="gameover";
+}
+
+function showWin(){
+  document.getElementById("win-s").innerHTML='Puntuacion final: <strong style="color:#E8A020;font-size:17px">'+G.score+'</strong>';
+  cv.style.display="none";
+  document.getElementById("dpad").style.display="none";
+  document.getElementById("hud").style.display="none";
+  document.getElementById("prog-wrap").style.display="none";
+  document.getElementById("toolbox").style.display="none";
+  document.getElementById("hint-bar").style.display="none";
+  showScr("s-win");
+  G.scr="win";
+  startDance();
+}
+
+// ── DANCE ─────────────────────────────────────────────────────────────────────
+var DLIST=["\uD83E\uDDD1\u200D\uD83D\uDD27","\uD83D\uDC77","\uD83E\uDDD1\u200D\uD83D\uDD27","\uD83D\uDC77\u200D\u2640\uFE0F","\uD83E\uDDD1\u200D\uD83D\uDD27","\uD83D\uDC77","\uD83E\uDDD1\u200D\uD83D\uDD27","\uD83D\uDC77\u200D\u2640\uFE0F"];
+var DOFF=[0,8,14,20,14,8,0,14];
+function startDance(){
+  var dc=document.getElementById("dancers");
+  dc.innerHTML="";
+  DLIST.forEach(function(d,i){
+    var sp=document.createElement("span");
+    sp.className="dn"; sp.id="dn"+i; sp.textContent=d;
+    dc.appendChild(sp);
+  });
+  if(G.dTimer) clearInterval(G.dTimer);
+  G.dFrame=0;
+  G.dTimer=setInterval(function(){
+    G.dFrame++;
+    DLIST.forEach(function(d,i){
+      var sp=document.getElementById("dn"+i); if(!sp) return;
+      var up=G.dFrame%2===0;
+      var off=up?-DOFF[i]:(DOFF[i]-10);
+      var rot=up?(i%2===0?-7:7):0;
+      sp.style.transform="translateY("+off+"px) rotate("+rot+"deg)";
+    });
+    var de=document.getElementById("demoji");
+    if(de) de.style.transform="scale("+(G.dFrame%2===0?1:1.12)+")";
+  },400);
+}
+
+// ── BUILD MENU LEVEL LIST ─────────────────────────────────────────────────────
+function buildMenuList(){
+  var ml=document.getElementById("lvl-list");
+  ml.innerHTML="";
+  LV.forEach(function(l){
+    var div=document.createElement("div");
+    div.className="lvl-row";
+    div.style.cssText="display:flex;align-items:baseline;gap:6px;margin-bottom:4px;padding:4px 8px;border-radius:6px;background:rgba(139,94,60,0.15);border:1px solid "+l.ac+"33";
+    div.innerHTML='<span style="color:'+l.ac+';font-size:13px;min-width:16px">'+l.n+'</span>'+
+      '<div><span style="color:#F5E6C8;font-size:12px;font-weight:bold">'+l.name+'</span>'+
+      '<span style="color:#8B5E3C;font-size:11px"> &mdash; '+l.sub+'</span><br>'+
+      '<span style="color:#6B3F1A;font-size:10px">'+l.tm+' termita'+(l.tm>1?"s":"")+' &middot; '+l.nd+' herramientas</span></div>';
+    ml.appendChild(div);
+  });
+}
+
+// ── INPUT ─────────────────────────────────────────────────────────────────────
+var KM={ArrowUp:{x:0,y:-1},ArrowDown:{x:0,y:1},ArrowLeft:{x:-1,y:0},ArrowRight:{x:1,y:0},
+  w:{x:0,y:-1},s:{x:0,y:1},a:{x:-1,y:0},d:{x:1,y:0}};
+document.addEventListener("keydown",function(e){
+  if(G.scr!=="playing") return;
+  var d=KM[e.key]; if(!d) return;
+  e.preventDefault(); G.inp=d;
+});
+
+function setDir(d){if(G.scr==="playing") G.inp=d;}
+document.getElementById("bu").addEventListener("pointerdown",function(e){e.preventDefault();setDir({x:0,y:-1});});
+document.getElementById("bd").addEventListener("pointerdown",function(e){e.preventDefault();setDir({x:0,y:1});});
+document.getElementById("bl").addEventListener("pointerdown",function(e){e.preventDefault();setDir({x:-1,y:0});});
+document.getElementById("br").addEventListener("pointerdown",function(e){e.preventDefault();setDir({x:1,y:0});});
+
+var swS=null;
+document.addEventListener("touchstart",function(e){swS={x:e.touches[0].clientX,y:e.touches[0].clientY};},{passive:true});
+document.addEventListener("touchend",function(e){
+  if(!swS||G.scr!=="playing") return;
+  var dx=e.changedTouches[0].clientX-swS.x;
+  var dy=e.changedTouches[0].clientY-swS.y;
+  G.inp=Math.abs(dx)>Math.abs(dy)?(dx>0?{x:1,y:0}:{x:-1,y:0}):(dy>0?{x:0,y:1}:{x:0,y:-1});
+  swS=null;
+});
+
+document.getElementById("btn-play").addEventListener("click",function(){startPlaying(0);});
+document.getElementById("btn-nl").addEventListener("click",function(){startPlaying(G.li+1);});
+document.getElementById("btn-rt").addEventListener("click",function(){startPlaying(G.li);});
+document.getElementById("btn-gm").addEventListener("click",showMenu);
+document.getElementById("btn-wp").addEventListener("click",function(){
+  if(G.dTimer) clearInterval(G.dTimer);
+  startPlaying(0);
+});
+
+buildMenuList();
+showMenu();
+})();
+</script>
+</body>
+</html>
