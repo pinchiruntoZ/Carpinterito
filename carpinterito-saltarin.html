@@ -1,0 +1,929 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>El Carpinterito Saltarín — Madera Fina</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body { background:#1a0a00; display:flex; flex-direction:column; align-items:center; justify-content:center; min-height:100vh; font-family:'Courier New',monospace; overflow:hidden; }
+#gameCanvas { display:block; border:3px solid #C8922A; image-rendering:pixelated; max-width:100vw; }
+#ui { position:fixed; top:0; left:0; right:0; display:flex; justify-content:space-between; align-items:center; padding:8px 16px; background:rgba(0,0,0,0.7); color:#FDF6EC; font-size:14px; font-weight:bold; z-index:10; }
+#ui span { color:#E8B84B; }
+#overlay { position:fixed; inset:0; background:rgba(0,0,0,0.85); display:flex; flex-direction:column; align-items:center; justify-content:center; color:#FDF6EC; z-index:20; text-align:center; padding:20px; }
+#overlay h1 { font-size:clamp(24px,5vw,48px); color:#E8B84B; text-shadow:3px 3px 0 #8B5E3C; margin-bottom:10px; }
+#overlay h2 { font-size:clamp(16px,3vw,28px); color:#C8922A; margin-bottom:20px; }
+#overlay p { font-size:clamp(12px,2vw,16px); color:#C49A6C; margin-bottom:8px; max-width:500px; }
+#overlay .controles { background:rgba(139,94,60,0.3); border:2px solid #C49A6C; border-radius:10px; padding:14px 20px; margin:14px 0; font-size:clamp(11px,1.8vw,14px); line-height:1.9; }
+#btnStart { background:#C8922A; color:#1a0a00; border:none; padding:14px 36px; font-size:18px; font-weight:bold; border-radius:8px; cursor:pointer; margin-top:10px; font-family:'Courier New',monospace; transition:all 0.2s; }
+#btnStart:hover { background:#E8B84B; transform:scale(1.05); }
+#overlay.hidden { display:none; }
+</style>
+</head>
+<body>
+
+<div id="ui">
+  <div>🪵 VIDAS: <span id="uiVidas">3</span></div>
+  <div>⭐ PUNTOS: <span id="uiPuntos">0</span></div>
+  <div>🔨 NIVEL: <span id="uiNivel">1</span></div>
+  <div id="uiPoder" style="color:#ff6;display:none">⚡ SUPERPODER!</div>
+</div>
+
+<canvas id="gameCanvas"></canvas>
+
+<div id="overlay">
+  <h1>🔨 El Carpinterito</h1>
+  <h2>¡Saltarín!</h2>
+  <p>¡Ayuda al Carpinterito a limpiar el taller de plagas!</p>
+  <div class="controles">
+    ⬅️ ➡️ — Moverse<br>
+    ⬆️ o ESPACIO — Saltar<br>
+    Z o A — Lanzar herramienta<br>
+    📱 Móvil: usa los botones en pantalla
+  </div>
+  <p style="color:#E8B84B">4 Niveles · 4 Plagas · 1 Final Épico</p>
+  <button id="btnStart">¡JUGAR AHORA!</button>
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Responsive canvas
+function resizeCanvas() {
+  const maxW = Math.min(window.innerWidth, 800);
+  const maxH = Math.min(window.innerHeight - 40, 500);
+  const ratio = 800/500;
+  if (maxW/maxH > ratio) { canvas.height = maxH; canvas.width = maxH*ratio; }
+  else { canvas.width = maxW; canvas.height = maxW/ratio; }
+  SCALE = canvas.width / 800;
+}
+let SCALE = 1;
+window.addEventListener('resize', resizeCanvas);
+resizeCanvas();
+
+// ── ESTADO DEL JUEGO ──
+const G = {
+  estado: 'menu', // menu, jugando, muerto, nivel_completo, fin
+  nivel: 1,
+  puntos: 0,
+  vidas: 3,
+  tick: 0,
+  poderTimer: 0,
+  poderActivo: false,
+  nivelTimer: 0,
+};
+
+// Niveles config
+const NIVELES = [
+  { nombre:'Taller de Melamina', bg1:'#87CEEB', bg2:'#E8D5A3', piso:'#C8922A', enemigo:'escarabajo', color:'#4A2C0A', colorClaro:'#8B5E3C', velocidad:1.5 },
+  { nombre:'Depósito de Aglomerado', bg1:'#FFB347', bg2:'#8B6914', piso:'#A0522D', enemigo:'hormiga', color:'#CC0000', colorClaro:'#FF6666', velocidad:2 },
+  { nombre:'Bosque de Madera Natural', bg1:'#228B22', bg2:'#556B2F', piso:'#8B4513', enemigo:'oruga', color:'#2E8B57', colorClaro:'#90EE90', velocidad:2.5 },
+  { nombre:'Almacén de Triple E', bg1:'#2C2C54', bg2:'#1a1a2e', piso:'#5C3D1E', enemigo:'termita', color:'#8B0000', colorClaro:'#FF4444', velocidad:3 },
+];
+
+// ── JUGADOR ──
+const P = {
+  x:100, y:300, vx:0, vy:0,
+  w:32, h:48,
+  enSuelo:false,
+  dir:1, // 1=derecha, -1=izquierda
+  animFrame:0, animTimer:0,
+  herramienta:'martillo', // martillo, serrucho, formon
+  invencible:0,
+  muerto:false,
+};
+
+// ── COLECCIONES ──
+let plataformas = [];
+let enemigos = [];
+let cajas = [];
+let proyectiles = [];
+let particulas = [];
+let items = []; // power-ups
+let scrollX = 0;
+let nivelAncho = 3200;
+
+// ── DIBUJO PIXEL ART ──
+
+function dpx(x,y,w,h,color) {
+  ctx.fillStyle = color;
+  ctx.fillRect((x-scrollX)*SCALE, y*SCALE, w*SCALE, h*SCALE);
+}
+
+function dibujarCarpinterito(x, y, dir, frame, poder) {
+  const sx = (x - scrollX) * SCALE;
+  const sy = y * SCALE;
+  const s = SCALE;
+  
+  ctx.save();
+  if (dir < 0) { ctx.scale(-1,1); ctx.translate(-sx*2 - 32*s, 0); }
+  
+  // Color base según poder
+  const skinColor = poder ? '#FF6B35' : '#FDBCB4';
+  const shirtColor = poder ? '#FF0000' : '#2E7D32';
+  
+  // Chullo gris
+  ctx.fillStyle = '#888888';
+  ctx.fillRect(sx+6*s, sy, 20*s, 14*s);
+  ctx.fillStyle = '#AAAAAA';
+  ctx.fillRect(sx+4*s, sy+8*s, 24*s, 8*s);
+  // Pompón
+  ctx.fillStyle = '#CCCCCC';
+  ctx.fillRect(sx+13*s, sy-4*s, 6*s, 6*s);
+  // Trenza
+  ctx.fillStyle = '#4A2C0A';
+  ctx.fillRect(sx+22*s, sy+10*s, 4*s, 20*s);
+  ctx.fillRect(sx+20*s, sy+28*s, 6*s, 4*s);
+  
+  // Cara
+  ctx.fillStyle = skinColor;
+  ctx.fillRect(sx+6*s, sy+12*s, 20*s, 14*s);
+  // Ojos
+  ctx.fillStyle = '#2C1A0E';
+  ctx.fillRect(sx+9*s, sy+15*s, 4*s, 4*s);
+  ctx.fillRect(sx+19*s, sy+15*s, 4*s, 4*s);
+  // Sonrisa
+  ctx.fillRect(sx+10*s, sy+22*s, 2*s, 2*s);
+  ctx.fillRect(sx+12*s, sy+24*s, 8*s, 2*s);
+  ctx.fillRect(sx+20*s, sy+22*s, 2*s, 2*s);
+  // Cachetes
+  ctx.fillStyle = '#FFB3A7';
+  ctx.fillRect(sx+7*s, sy+20*s, 4*s, 4*s);
+  ctx.fillRect(sx+21*s, sy+20*s, 4*s, 4*s);
+  
+  // Camisa
+  ctx.fillStyle = shirtColor;
+  ctx.fillRect(sx+4*s, sy+26*s, 24*s, 14*s);
+  // Cinturón herramientas
+  ctx.fillStyle = '#8B4513';
+  ctx.fillRect(sx+4*s, sy+38*s, 24*s, 4*s);
+  ctx.fillStyle = '#C8922A';
+  ctx.fillRect(sx+13*s, sy+38*s, 6*s, 4*s);
+  
+  // Jeans
+  ctx.fillStyle = '#1565C0';
+  // Piernas animadas
+  if (frame === 0) {
+    ctx.fillRect(sx+4*s, sy+40*s, 10*s, 18*s);
+    ctx.fillRect(sx+18*s, sy+40*s, 10*s, 18*s);
+  } else if (frame === 1) {
+    ctx.fillRect(sx+4*s, sy+40*s, 10*s, 14*s);
+    ctx.fillRect(sx+4*s, sy+50*s, 10*s, 8*s);
+    ctx.fillRect(sx+18*s, sy+40*s, 10*s, 18*s);
+  } else {
+    ctx.fillRect(sx+4*s, sy+40*s, 10*s, 18*s);
+    ctx.fillRect(sx+18*s, sy+40*s, 10*s, 14*s);
+    ctx.fillRect(sx+18*s, sy+50*s, 10*s, 8*s);
+  }
+  
+  // Botas
+  ctx.fillStyle = '#5C3D1E';
+  ctx.fillRect(sx+2*s, sy+56*s, 12*s, 8*s);
+  ctx.fillRect(sx+18*s, sy+56*s, 12*s, 8*s);
+  
+  // Brazo con martillo
+  ctx.fillStyle = skinColor;
+  ctx.fillRect(sx+26*s, sy+28*s, 8*s, 6*s);
+  // Martillo
+  ctx.fillStyle = '#5C3D1E';
+  ctx.fillRect(sx+32*s, sy+24*s, 6*s, 14*s);
+  ctx.fillStyle = '#888';
+  ctx.fillRect(sx+28*s, sy+24*s, 10*s, 6*s);
+  
+  ctx.restore();
+}
+
+function dibujarEscarabajo(x, y, frame, cfg) {
+  const sx = (x-scrollX)*SCALE, sy=y*SCALE, s=SCALE;
+  // Cuerpo grande
+  ctx.fillStyle = cfg.color;
+  ctx.fillRect(sx+2*s, sy+10*s, 36*s, 26*s);
+  ctx.fillStyle = cfg.colorClaro;
+  ctx.fillRect(sx+8*s, sy+6*s, 24*s, 12*s); // cabeza
+  // Ojos amenazantes
+  ctx.fillStyle = '#FF0';
+  ctx.fillRect(sx+10*s, sy+8*s, 6*s, 6*s);
+  ctx.fillRect(sx+24*s, sy+8*s, 6*s, 6*s);
+  ctx.fillStyle = '#000';
+  ctx.fillRect(sx+12*s, sy+10*s, 3*s, 3*s);
+  ctx.fillRect(sx+26*s, sy+10*s, 3*s, 3*s);
+  // Patas animadas
+  ctx.fillStyle = cfg.color;
+  const off = frame===0?0:3;
+  ctx.fillRect(sx-4*s, sy+14*s+off*s, 8*s, 4*s);
+  ctx.fillRect(sx-4*s, sy+22*s-off*s, 8*s, 4*s);
+  ctx.fillRect(sx+36*s, sy+14*s-off*s, 8*s, 4*s);
+  ctx.fillRect(sx+36*s, sy+22*s+off*s, 8*s, 4*s);
+  // Vida
+  dibujarVidaEnemigo(x, y, sx, sy, s);
+}
+
+function dibujarHormiga(x, y, frame, cfg) {
+  const sx=(x-scrollX)*SCALE, sy=y*SCALE, s=SCALE;
+  ctx.fillStyle = cfg.color;
+  // Cabeza
+  ctx.fillRect(sx+10*s, sy, 20*s, 18*s);
+  // Antenas
+  ctx.fillRect(sx+12*s, sy-8*s, 3*s, 10*s);
+  ctx.fillRect(sx+25*s, sy-8*s, 3*s, 10*s);
+  // Cuerpo
+  ctx.fillRect(sx+6*s, sy+18*s, 28*s, 16*s);
+  // Abdomen
+  ctx.fillRect(sx+8*s, sy+34*s, 24*s, 16*s);
+  ctx.fillStyle = cfg.colorClaro;
+  ctx.fillRect(sx+12*s, sy+36*s, 16*s, 4*s);
+  ctx.fillRect(sx+12*s, sy+42*s, 16*s, 4*s);
+  // Ojos rojos
+  ctx.fillStyle = '#FF0000';
+  ctx.fillRect(sx+12*s, sy+4*s, 5*s, 5*s);
+  ctx.fillRect(sx+23*s, sy+4*s, 5*s, 5*s);
+  // Patas
+  const off2 = frame===0?0:4;
+  ctx.fillStyle = cfg.color;
+  for(let i=0;i<3;i++){
+    ctx.fillRect(sx-6*s, sy+18*s+i*6*s+off2*s, 12*s, 3*s);
+    ctx.fillRect(sx+34*s, sy+18*s+i*6*s-off2*s, 12*s, 3*s);
+  }
+  dibujarVidaEnemigo(x, y, sx, sy, s);
+}
+
+function dibujarOruga(x, y, frame, cfg) {
+  const sx=(x-scrollX)*SCALE, sy=y*SCALE, s=SCALE;
+  const off3 = frame===0?0:2;
+  // Segmentos
+  const colores = [cfg.color, cfg.colorClaro];
+  for(let i=0;i<5;i++){
+    ctx.fillStyle = colores[i%2];
+    ctx.fillRect(sx+i*9*s+off3*s, sy+8*s, 12*s, 20*s);
+  }
+  // Cabeza
+  ctx.fillStyle = cfg.color;
+  ctx.fillRect(sx, sy, 18*s, 22*s);
+  ctx.fillStyle = '#FF0';
+  ctx.fillRect(sx+3*s, sy+4*s, 5*s, 5*s);
+  ctx.fillRect(sx+10*s, sy+4*s, 5*s, 5*s);
+  ctx.fillStyle='#000';
+  ctx.fillRect(sx+5*s,sy+6*s,2*s,2*s);
+  ctx.fillRect(sx+12*s,sy+6*s,2*s,2*s);
+  // Cuernos
+  ctx.fillStyle=cfg.colorClaro;
+  ctx.fillRect(sx+4*s,sy-6*s,4*s,8*s);
+  ctx.fillRect(sx+12*s,sy-6*s,4*s,8*s);
+  dibujarVidaEnemigo(x, y, sx, sy, s);
+}
+
+function dibujarTermita(x, y, frame, cfg) {
+  const sx=(x-scrollX)*SCALE, sy=y*SCALE, s=SCALE;
+  // Alas
+  ctx.fillStyle='rgba(200,180,255,0.5)';
+  ctx.fillRect(sx-8*s, sy+4*s, 16*s, 24*s);
+  ctx.fillRect(sx+32*s, sy+4*s, 16*s, 24*s);
+  // Cuerpo
+  ctx.fillStyle=cfg.color;
+  ctx.fillRect(sx+6*s, sy+8*s, 28*s, 20*s);
+  // Cabeza con mandíbulas
+  ctx.fillRect(sx+4*s, sy, 24*s, 16*s);
+  ctx.fillStyle=cfg.colorClaro;
+  ctx.fillRect(sx, sy+6*s, 8*s, 6*s); // mandíbula izq
+  ctx.fillRect(sx+24*s, sy+6*s, 8*s, 6*s); // mandíbula der
+  // Ojos brillantes
+  ctx.fillStyle='#FF4400';
+  ctx.fillRect(sx+6*s, sy+2*s, 6*s, 6*s);
+  ctx.fillRect(sx+20*s, sy+2*s, 6*s, 6*s);
+  ctx.fillStyle='#FFF';
+  ctx.fillRect(sx+7*s, sy+3*s, 3*s, 3*s);
+  ctx.fillRect(sx+21*s, sy+3*s, 3*s, 3*s);
+  // Abdomen rayado
+  ctx.fillStyle=cfg.color;
+  ctx.fillRect(sx+8*s, sy+28*s, 20*s, 14*s);
+  for(let i=0;i<3;i++){
+    ctx.fillStyle=cfg.colorClaro;
+    ctx.fillRect(sx+8*s, sy+30*s+i*4*s, 20*s, 2*s);
+  }
+  // Patas animadas
+  const off4=frame===0?0:3;
+  ctx.fillStyle=cfg.color;
+  for(let i=0;i<3;i++){
+    ctx.fillRect(sx-4*s,sy+10*s+i*5*s+off4*s,10*s,3*s);
+    ctx.fillRect(sx+34*s,sy+10*s+i*5*s-off4*s,10*s,3*s);
+  }
+  dibujarVidaEnemigo(x, y, sx, sy, s);
+}
+
+function dibujarVidaEnemigo(x, y, sx, sy, s) {
+  // La vida se maneja externamente
+}
+
+function dibujarCaja(x, y, rota) {
+  const sx=(x-scrollX)*SCALE, sy=y*SCALE, s=SCALE;
+  ctx.fillStyle = rota ? '#5C3D1E' : '#C8922A';
+  ctx.fillRect(sx, sy, 32*s, 32*s);
+  if(!rota){
+    ctx.fillStyle = '#E8B84B';
+    ctx.fillRect(sx+2*s, sy+2*s, 28*s, 4*s);
+    ctx.fillRect(sx+2*s, sy+26*s, 28*s, 4*s);
+    ctx.fillRect(sx+14*s, sy+2*s, 4*s, 28*s);
+    ctx.fillStyle = '#8B5E3C';
+    ctx.fillRect(sx+4*s, sy+8*s, 8*s, 6*s);
+    ctx.fillRect(sx+20*s, sy+8*s, 8*s, 6*s);
+    // Signo de interrogación
+    ctx.fillStyle = '#FFF';
+    ctx.font = `bold ${14*s}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText('?', sx+16*s, sy+22*s);
+  }
+}
+
+function dibujarItem(item) {
+  const sx=(item.x-scrollX)*SCALE, sy=item.y*SCALE, s=SCALE;
+  const t = G.tick;
+  const bob = Math.sin(t*0.1)*3*s;
+  
+  if(item.tipo==='sandwich'){
+    // Pan
+    ctx.fillStyle='#D4A574';
+    ctx.fillRect(sx, sy+bob, 24*s, 20*s);
+    ctx.fillStyle='#F5DEB3';
+    ctx.fillRect(sx+2*s, sy+bob+2*s, 20*s, 6*s);
+    // Relleno
+    ctx.fillStyle='#2E7D32';
+    ctx.fillRect(sx+2*s, sy+bob+8*s, 20*s, 4*s);
+    ctx.fillStyle='#CC0000';
+    ctx.fillRect(sx+2*s, sy+bob+12*s, 20*s, 3*s);
+  } else if(item.tipo==='cerveza'){
+    ctx.fillStyle='#F4A460';
+    ctx.fillRect(sx+6*s, sy+bob, 14*s, 22*s);
+    ctx.fillStyle='#FFF8DC';
+    ctx.fillRect(sx+6*s, sy+bob, 14*s, 8*s);
+    ctx.fillStyle='#DAA520';
+    ctx.fillRect(sx+4*s, sy+bob+4*s, 18*s, 16*s);
+  } else if(item.tipo==='serrucho'){
+    ctx.fillStyle='#888';
+    ctx.fillRect(sx, sy+bob+8*s, 28*s, 6*s);
+    for(let i=0;i<7;i++) ctx.fillRect(sx+i*4*s, sy+bob, 4*s, 10*s);
+    ctx.fillStyle='#8B4513';
+    ctx.fillRect(sx+22*s, sy+bob+6*s, 8*s, 10*s);
+  } else if(item.tipo==='formon'){
+    ctx.fillStyle='#888';
+    ctx.fillRect(sx+8*s, sy+bob, 6*s, 20*s);
+    ctx.fillStyle='#8B4513';
+    ctx.fillRect(sx+4*s, sy+bob+18*s, 14*s, 8*s);
+  }
+}
+
+function dibujarProyectil(p) {
+  const sx=(p.x-scrollX)*SCALE, sy=p.y*SCALE, s=SCALE;
+  if(p.tipo==='martillo'){
+    ctx.fillStyle='#888';
+    ctx.fillRect(sx, sy, 16*s, 6*s);
+    ctx.fillStyle='#5C3D1E';
+    ctx.fillRect(sx+6*s, sy-4*s, 4*s, 14*s);
+  } else if(p.tipo==='serrucho'){
+    ctx.fillStyle='#AAA';
+    ctx.fillRect(sx, sy, 24*s, 4*s);
+    for(let i=0;i<6;i++) ctx.fillRect(sx+i*4*s, sy-4*s, 3*s, 6*s);
+  } else if(p.tipo==='formon'){
+    ctx.fillStyle='#AAA';
+    ctx.fillRect(sx+4*s, sy, 4*s, 18*s);
+    ctx.fillStyle='#8B4513';
+    ctx.fillRect(sx+2*s, sy+16*s, 8*s, 6*s);
+  }
+}
+
+function dibujarParticula(p) {
+  ctx.fillStyle = p.color;
+  ctx.globalAlpha = p.vida/p.maxVida;
+  ctx.fillRect((p.x-scrollX)*SCALE, p.y*SCALE, p.s*SCALE, p.s*SCALE);
+  ctx.globalAlpha = 1;
+}
+
+// ── FONDO POR NIVEL ──
+function dibujarFondo(cfg) {
+  const W=800, H=500;
+  // Cielo
+  const grad=ctx.createLinearGradient(0,0,0,H*SCALE);
+  grad.addColorStop(0,cfg.bg1);
+  grad.addColorStop(1,cfg.bg2);
+  ctx.fillStyle=grad;
+  ctx.fillRect(0,0,canvas.width,canvas.height);
+
+  // Nubes / decoración
+  ctx.fillStyle='rgba(255,255,255,0.15)';
+  for(let i=0;i<5;i++){
+    const cx=((i*200+G.tick*0.3)%900-100)*SCALE;
+    const cy=(60+i*30)*SCALE;
+    ctx.fillRect(cx,cy,80*SCALE,20*SCALE);
+    ctx.fillRect(cx+10*SCALE,cy-10*SCALE,60*SCALE,20*SCALE);
+  }
+
+  // Árboles/decoración de fondo
+  if(G.nivel===1){
+    // Estantes de melamina
+    ctx.fillStyle='rgba(200,146,42,0.2)';
+    for(let i=0;i<6;i++){
+      const bx=(i*300-scrollX*0.3)*SCALE;
+      ctx.fillRect(bx%canvas.width, 80*SCALE, 120*SCALE, 8*SCALE);
+      ctx.fillRect(bx%canvas.width, 160*SCALE, 120*SCALE, 8*SCALE);
+    }
+  } else if(G.nivel===3){
+    // Árboles
+    ctx.fillStyle='rgba(34,139,34,0.3)';
+    for(let i=0;i<8;i++){
+      const tx=(i*180-scrollX*0.2)%canvas.width;
+      ctx.fillRect(tx, 80*SCALE, 40*SCALE, 120*SCALE);
+      ctx.fillRect(tx-20*SCALE, 50*SCALE, 80*SCALE, 80*SCALE);
+    }
+  }
+}
+
+function dibujarPiso(cfg) {
+  // Piso de tablas
+  for(let i=-1;i<nivelAncho/64+1;i++){
+    const px=(i*64-scrollX)*SCALE;
+    if(px < -70*SCALE || px > canvas.width+10) continue;
+    ctx.fillStyle=cfg.piso;
+    ctx.fillRect(px, 420*SCALE, 64*SCALE, 80*SCALE);
+    ctx.fillStyle='rgba(0,0,0,0.15)';
+    ctx.fillRect(px, 420*SCALE, 2*SCALE, 80*SCALE);
+    ctx.fillStyle='rgba(255,255,255,0.08)';
+    ctx.fillRect(px+4*SCALE, 422*SCALE, 56*SCALE, 3*SCALE);
+  }
+}
+
+// ── GENERACIÓN DEL NIVEL ──
+function generarNivel(n) {
+  plataformas = [];
+  enemigos = [];
+  cajas = [];
+  items = [];
+  proyectiles = [];
+  particulas = [];
+  scrollX = 0;
+  nivelAncho = 3200;
+
+  const cfg = NIVELES[n-1];
+
+  // Plataformas
+  const posPlats = [
+    {x:200,y:340,w:120},{x:420,y:280,w:100},{x:600,y:320,w:120},
+    {x:800,y:260,w:100},{x:1000,y:300,w:120},{x:1200,y:240,w:100},
+    {x:1400,y:300,w:120},{x:1600,y:260,w:100},{x:1800,y:300,w:120},
+    {x:2000,y:240,w:140},{x:2200,y:280,w:100},{x:2400,y:320,w:120},
+    {x:2600,y:260,w:100},{x:2800,y:300,w:120},{x:3000,y:350,w:100},
+  ];
+  posPlats.forEach(function(p){
+    plataformas.push({x:p.x,y:p.y,w:p.w,h:16,color:cfg.piso});
+  });
+
+  // Cajas flotantes
+  const posCajas = [300,500,700,900,1100,1300,1500,1700,1900,2100,2300,2500,2700,2900];
+  posCajas.forEach(function(cx,i){
+    cajas.push({x:cx, y:220, w:32, h:32, rota:false,
+      contenido: i%4===0?'serrucho': i%4===1?'formon': i%4===2?'sandwich': i%3===0?'cerveza':'vacio'
+    });
+  });
+
+  // Enemigos
+  const numE = 6 + n*2;
+  for(let i=0;i<numE;i++){
+    enemigos.push({
+      x: 400 + i*280,
+      y: 380,
+      vx: (Math.random()>0.5?1:-1)*cfg.velocidad,
+      w:40, h:50,
+      vida: 2,
+      maxVida: 2,
+      animFrame:0, animTimer:0,
+      tipo: cfg.enemigo,
+      cfg: cfg,
+      muerto:false,
+      parpadeo:0,
+    });
+  }
+
+  // Posición inicial jugador
+  P.x=60; P.y=360; P.vx=0; P.vy=0;
+  P.enSuelo=false; P.dir=1;
+  P.herramienta='martillo';
+  P.invencible=0; P.muerto=false;
+  G.poderActivo=false; G.poderTimer=0;
+}
+
+// ── FÍSICA ──
+function update() {
+  if(G.estado!=='jugando') return;
+  G.tick++;
+
+  const cfg = NIVELES[G.nivel-1];
+  const GRAVEDAD=0.6, VEL=3.5, SALTO=-12;
+  const PISO_Y = 370;
+
+  // Poder timer
+  if(G.poderActivo){
+    G.poderTimer--;
+    if(G.poderTimer<=0){ G.poderActivo=false; document.getElementById('uiPoder').style.display='none'; }
+  }
+
+  // Mover jugador
+  P.vy += GRAVEDAD;
+  P.x += P.vx;
+  P.y += P.vy;
+
+  // Colisión piso
+  if(P.y >= PISO_Y){ P.y=PISO_Y; P.vy=0; P.enSuelo=true; }
+
+  // Colisión plataformas
+  let sobrePlat = false;
+  plataformas.forEach(function(pl){
+    if(P.x+P.w > pl.x && P.x < pl.x+pl.w && P.vy>=0 &&
+       P.y+P.h > pl.y && P.y+P.h < pl.y+pl.h+12){
+      P.y=pl.y-P.h; P.vy=0; sobrePlat=true; P.enSuelo=true;
+    }
+  });
+  if(!sobrePlat && P.y<PISO_Y) P.enSuelo=false;
+
+  // Límites nivel
+  if(P.x<0) P.x=0;
+  if(P.x>nivelAncho-P.w) P.x=nivelAncho-P.w;
+  if(P.y>500){ perderVida(); return; }
+
+  // Scroll
+  const targetScroll = P.x - 300;
+  scrollX = Math.max(0, Math.min(nivelAncho-800, targetScroll));
+
+  // Animación jugador
+  P.animTimer++;
+  if(P.animTimer>8){ P.animTimer=0; P.animFrame=(P.animFrame+1)%3; }
+  if(P.invencible>0) P.invencible--;
+
+  // Cajas
+  cajas.forEach(function(cj){
+    if(cj.rota) return;
+    // Colisión cabeza jugador
+    if(P.x+P.w>cj.x+2 && P.x<cj.x+cj.w-2 && P.vy<0 &&
+       P.y+2>cj.y && P.y<cj.y+cj.h){
+      P.vy=4;
+      cj.rota=true;
+      if(cj.contenido!=='vacio'){
+        items.push({x:cj.x+4, y:cj.y-28, tipo:cj.contenido, vy:-3, vx:0, vida:300});
+        crearParticulas(cj.x+16,cj.y+16,'#E8B84B',8);
+        G.puntos+=10;
+      } else {
+        crearParticulas(cj.x+16,cj.y+16,'#888',5);
+      }
+    }
+  });
+
+  // Items
+  items.forEach(function(it,i){
+    it.vy+=0.3; it.x+=it.vx; it.y+=it.vy;
+    if(it.y>PISO_Y){ it.y=PISO_Y-24; it.vy=0; }
+    it.vida--;
+    // Recoger
+    if(P.x+P.w>it.x && P.x<it.x+24 && P.y+P.h>it.y && P.y<it.y+24){
+      if(it.tipo==='sandwich'||it.tipo==='cerveza'){
+        G.poderActivo=true; G.poderTimer=400;
+        document.getElementById('uiPoder').style.display='block';
+        G.puntos+=50;
+      } else {
+        P.herramienta=it.tipo;
+        G.puntos+=20;
+      }
+      crearParticulas(it.x+12,it.y+12,'#FFD700',10);
+      items.splice(i,1);
+    }
+    if(it.vida<=0) items.splice(i,1);
+  });
+
+  // Enemigos
+  enemigos.forEach(function(en){
+    if(en.muerto) return;
+    en.x+=en.vx;
+    en.animTimer++;
+    if(en.animTimer>10){en.animTimer=0; en.animFrame=1-en.animFrame;}
+    if(en.parpadeo>0) en.parpadeo--;
+
+    // Rebotar en bordes
+    if(en.x<0||en.x>nivelAncho-en.w) en.vx*=-1;
+    // Rebotar en plataformas
+    plataformas.forEach(function(pl){
+      if(en.x<pl.x||en.x>pl.x+pl.w-10) en.vx*=-1;
+    });
+
+    // Colisión con jugador
+    if(P.invencible===0 && P.x+P.w-4>en.x+4 && P.x+4<en.x+en.w-4 &&
+       P.y+P.h-4>en.y+4 && P.y+4<en.y+en.h-4){
+      if(G.poderActivo){
+        // Poder: destruye al contacto
+        matarEnemigo(en, enemigos.indexOf(en));
+      } else if(P.vy>0 && P.y+P.h<en.y+en.h/2+10){
+        // Salto encima
+        golpearEnemigo(en, enemigos.indexOf(en));
+        P.vy=-8;
+      } else {
+        perderVida();
+      }
+    }
+  });
+
+  // Proyectiles
+  proyectiles.forEach(function(pr,i){
+    pr.x+=pr.vx; pr.y+=pr.vy;
+    pr.vida--;
+    if(pr.vida<=0||pr.x<0||pr.x>nivelAncho){proyectiles.splice(i,1);return;}
+    // Colisión enemigos
+    enemigos.forEach(function(en){
+      if(en.muerto||en.parpadeo>0) return;
+      if(pr.x+16>en.x && pr.x<en.x+en.w && pr.y+16>en.y && pr.y<en.y+en.h){
+        golpearEnemigo(en, enemigos.indexOf(en));
+        proyectiles.splice(i,1);
+      }
+    });
+  });
+
+  // Partículas
+  particulas.forEach(function(p,i){
+    p.x+=p.vx; p.y+=p.vy; p.vy+=0.2; p.vida--;
+    if(p.vida<=0) particulas.splice(i,1);
+  });
+
+  // ¿Llegó al final?
+  if(P.x>nivelAncho-100){
+    if(G.nivel<4){
+      G.nivel++;
+      G.estado='nivel_completo';
+      G.nivelTimer=180;
+    } else {
+      G.estado='fin';
+      mostrarFin();
+    }
+  }
+
+  // Nivel completo timer
+  if(G.estado==='nivel_completo'){
+    G.nivelTimer--;
+    if(G.nivelTimer<=0){
+      generarNivel(G.nivel);
+      G.estado='jugando';
+    }
+  }
+
+  // UI
+  document.getElementById('uiVidas').textContent=G.vidas;
+  document.getElementById('uiPuntos').textContent=G.puntos;
+  document.getElementById('uiNivel').textContent=G.nivel;
+}
+
+function golpearEnemigo(en, idx) {
+  en.vida--;
+  en.parpadeo=20;
+  G.puntos+=25;
+  crearParticulas(en.x+en.w/2, en.y+en.h/2, '#FF4400', 6);
+  if(en.vida<=0) matarEnemigo(en, idx);
+}
+
+function matarEnemigo(en, idx) {
+  en.muerto=true;
+  G.puntos+=100;
+  crearParticulas(en.x+en.w/2, en.y+en.h/2, '#FFD700', 14);
+  // Verificar si todos muertos
+  const vivos=enemigos.filter(function(e){return !e.muerto;});
+  if(vivos.length===0) G.puntos+=500;
+}
+
+function perderVida() {
+  if(P.invencible>0) return;
+  G.vidas--;
+  P.invencible=120;
+  crearParticulas(P.x+16, P.y+24, '#FF0000', 10);
+  if(G.vidas<=0){
+    G.estado='gameover';
+    mostrarGameOver();
+  } else {
+    P.x=60; P.y=350; P.vx=0; P.vy=0;
+  }
+}
+
+function crearParticulas(x,y,color,n) {
+  for(let i=0;i<n;i++){
+    particulas.push({
+      x:x,y:y,
+      vx:(Math.random()-0.5)*6,
+      vy:(Math.random()-0.5)*6-2,
+      color:color,
+      vida:30,maxVida:30,
+      s:Math.random()*4+2
+    });
+  }
+}
+
+// ── DIBUJAR TODO ──
+function draw() {
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+
+  const cfg = NIVELES[G.nivel-1];
+  dibujarFondo(cfg);
+  dibujarPiso(cfg);
+
+  // Plataformas
+  plataformas.forEach(function(pl){
+    const sx=(pl.x-scrollX)*SCALE, sy=pl.y*SCALE;
+    ctx.fillStyle=pl.color;
+    ctx.fillRect(sx,sy,pl.w*SCALE,pl.h*SCALE);
+    ctx.fillStyle='rgba(255,255,255,0.1)';
+    ctx.fillRect(sx,sy,pl.w*SCALE,3*SCALE);
+    ctx.fillStyle='rgba(0,0,0,0.2)';
+    ctx.fillRect(sx,sy+pl.h*SCALE-3*SCALE,pl.w*SCALE,3*SCALE);
+  });
+
+  // Cajas
+  cajas.forEach(function(cj){ dibujarCaja(cj.x,cj.y,cj.rota); });
+
+  // Items
+  items.forEach(function(it){ dibujarItem(it); });
+
+  // Enemigos
+  enemigos.forEach(function(en){
+    if(en.muerto) return;
+    // Parpadeo si fue golpeado
+    if(en.parpadeo>0 && Math.floor(G.tick/3)%2===0) return;
+    if(en.tipo==='escarabajo') dibujarEscarabajo(en.x,en.y,en.animFrame,en.cfg);
+    else if(en.tipo==='hormiga') dibujarHormiga(en.x,en.y,en.animFrame,en.cfg);
+    else if(en.tipo==='oruga') dibujarOruga(en.x,en.y,en.animFrame,en.cfg);
+    else if(en.tipo==='termita') dibujarTermita(en.x,en.y,en.animFrame,en.cfg);
+    // Barra vida
+    const sx=(en.x-scrollX)*SCALE, sy=en.y*SCALE, s=SCALE;
+    ctx.fillStyle='#333';
+    ctx.fillRect(sx,sy-8*s,en.w*s,4*s);
+    ctx.fillStyle='#0F0';
+    ctx.fillRect(sx,sy-8*s,(en.w*en.vida/en.maxVida)*s,4*s);
+  });
+
+  // Proyectiles
+  proyectiles.forEach(dibujarProyectil);
+
+  // Partículas
+  particulas.forEach(dibujarParticula);
+
+  // Jugador (parpadea si invencible)
+  if(!(P.invencible>0 && Math.floor(G.tick/4)%2===0)){
+    dibujarCarpinterito(P.x, P.y, P.dir, P.animFrame, G.poderActivo);
+  }
+
+  // Meta (puerta al final)
+  const metaX=(nivelAncho-80-scrollX)*SCALE;
+  if(metaX>-50*SCALE && metaX<canvas.width+50*SCALE){
+    ctx.fillStyle='#8B4513';
+    ctx.fillRect(metaX, 340*SCALE, 60*SCALE, 80*SCALE);
+    ctx.fillStyle='#C8922A';
+    ctx.fillRect(metaX+4*SCALE, 344*SCALE, 52*SCALE, 72*SCALE);
+    ctx.fillStyle='#E8B84B';
+    ctx.fillRect(metaX+24*SCALE, 380*SCALE, 10*SCALE, 10*SCALE);
+    // Flecha
+    ctx.fillStyle='#FFF';
+    ctx.font=`bold ${20*SCALE}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText('▶', metaX+30*SCALE, 336*SCALE);
+  }
+
+  // Nivel completo overlay
+  if(G.estado==='nivel_completo'){
+    ctx.fillStyle='rgba(0,0,0,0.6)';
+    ctx.fillRect(0,0,canvas.width,canvas.height);
+    ctx.fillStyle='#E8B84B';
+    ctx.font=`bold ${clamp(24,5,40)*SCALE}px Courier New`;
+    ctx.textAlign='center';
+    ctx.fillText('¡NIVEL COMPLETADO! 🎉', canvas.width/2, canvas.height/2-20*SCALE);
+    ctx.fillStyle='#FFF';
+    ctx.font=`${clamp(14,3,20)*SCALE}px Courier New`;
+    ctx.fillText('Nivel '+G.nivel+': '+NIVELES[G.nivel-1].nombre, canvas.width/2, canvas.height/2+20*SCALE);
+  }
+
+  // HUD herramienta
+  ctx.fillStyle='rgba(0,0,0,0.5)';
+  ctx.fillRect(10*SCALE,40*SCALE,60*SCALE,30*SCALE);
+  ctx.fillStyle='#E8B84B';
+  ctx.font=`${11*SCALE}px Courier New`;
+  ctx.textAlign='left';
+  ctx.fillText('🔧 '+P.herramienta, 14*SCALE, 60*SCALE);
+}
+
+function clamp(min,pct,max){ return Math.min(max,Math.max(min,pct*SCALE)); }
+
+// ── CONTROLES ──
+const keys={};
+document.addEventListener('keydown',function(e){
+  keys[e.code]=true;
+  if(['Space','ArrowUp','ArrowLeft','ArrowRight','KeyZ','KeyA'].includes(e.code)) e.preventDefault();
+});
+document.addEventListener('keyup',function(e){ keys[e.code]=false; });
+
+function procesarInput(){
+  if(G.estado!=='jugando') return;
+  const VEL=3.5;
+
+  P.vx=0;
+  if(keys['ArrowLeft']||keys['KeyA']){ P.vx=-VEL*(G.poderActivo?1.5:1); P.dir=-1; }
+  if(keys['ArrowRight']||keys['KeyD']){ P.vx=VEL*(G.poderActivo?1.5:1); P.dir=1; }
+  if((keys['ArrowUp']||keys['Space']||keys['KeyW'])&&P.enSuelo){
+    P.vy=G.poderActivo?-14:-12; P.enSuelo=false;
+  }
+  if((keys['KeyZ']||keys['ShiftLeft'])&&!keys['_lastZ']){
+    keys['_lastZ']=true;
+    lanzarProyectil();
+  }
+  if(!keys['KeyZ']&&!keys['ShiftLeft']) keys['_lastZ']=false;
+}
+
+function lanzarProyectil(){
+  const velocidades={martillo:8,serrucho:10,formon:7};
+  const vel=velocidades[P.herramienta]||8;
+  proyectiles.push({
+    x:P.x+(P.dir>0?P.w:0),
+    y:P.y+16,
+    vx:P.dir*vel,
+    vy:0,
+    tipo:P.herramienta,
+    vida:80
+  });
+  G.puntos+=0;
+}
+
+// Controles móvil
+function addMobileControls(){
+  const mc=document.createElement('div');
+  mc.style.cssText='position:fixed;bottom:10px;left:0;right:0;display:flex;justify-content:space-between;padding:0 10px;z-index:15;pointer-events:none;';
+  mc.innerHTML=`
+    <div style="display:flex;gap:8px;pointer-events:all">
+      <button id="mb-left" style="width:60px;height:60px;background:rgba(200,146,42,0.8);border:2px solid #E8B84B;border-radius:50%;color:#1a0a00;font-size:24px;font-weight:bold;cursor:pointer;user-select:none;">◀</button>
+      <button id="mb-right" style="width:60px;height:60px;background:rgba(200,146,42,0.8);border:2px solid #E8B84B;border-radius:50%;color:#1a0a00;font-size:24px;font-weight:bold;cursor:pointer;user-select:none;">▶</button>
+    </div>
+    <div style="display:flex;gap:8px;pointer-events:all">
+      <button id="mb-attack" style="width:60px;height:60px;background:rgba(139,94,60,0.8);border:2px solid #C49A6C;border-radius:50%;color:#FDF6EC;font-size:20px;cursor:pointer;user-select:none;">🔨</button>
+      <button id="mb-jump" style="width:60px;height:60px;background:rgba(46,125,50,0.8);border:2px solid #4CAF50;border-radius:50%;color:#FDF6EC;font-size:24px;font-weight:bold;cursor:pointer;user-select:none;">▲</button>
+    </div>`;
+  document.body.appendChild(mc);
+
+  function bindBtn(id, key, on){
+    const btn=document.getElementById(id);
+    btn.addEventListener('touchstart',function(e){e.preventDefault();keys[key]=on===undefined?true:on;},{passive:false});
+    btn.addEventListener('touchend',function(e){e.preventDefault();keys[key]=false;},{passive:false});
+    btn.addEventListener('mousedown',function(){keys[key]=true;});
+    btn.addEventListener('mouseup',function(){keys[key]=false;});
+  }
+  bindBtn('mb-left','ArrowLeft');
+  bindBtn('mb-right','ArrowRight');
+  bindBtn('mb-jump','Space');
+  document.getElementById('mb-attack').addEventListener('touchstart',function(e){e.preventDefault();lanzarProyectil();},{passive:false});
+  document.getElementById('mb-attack').addEventListener('click',lanzarProyectil);
+}
+
+// ── OVERLAYS ──
+function mostrarGameOver(){
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`<h1>💀 GAME OVER</h1><h2>¡Las plagas ganaron!</h2><p>Puntos: ${G.puntos}</p><button id="btnStart" style="background:#C8922A;color:#1a0a00;border:none;padding:14px 36px;font-size:18px;font-weight:bold;border-radius:8px;cursor:pointer;margin-top:10px;font-family:Courier New,monospace">¡REINTENTAR!</button>`;
+  ov.classList.remove('hidden');
+  document.getElementById('btnStart').addEventListener('click',iniciar);
+}
+
+function mostrarFin(){
+  G.estado='fin';
+  const ov=document.getElementById('overlay');
+  ov.innerHTML=`
+    <h1>🏆 ¡LO LOGRASTE!</h1>
+    <h2>¡Eres un Maestro Carpintero!</h2>
+    <div style="font-size:3rem;margin:10px 0">🎉🪵🔨🎉</div>
+    <p style="font-size:1.1rem;color:#E8B84B;margin:10px 0">El Carpinterito abre la puerta del taller...<br>¡Sus compañeros salen a celebrar!</p>
+    <div style="font-size:2rem;animation:none;margin:10px 0">👷‍♂️💃🕺👷‍♀️</div>
+    <p>Puntos finales: <span style="color:#E8B84B;font-size:1.4rem">${G.puntos}</span></p>
+    <p style="color:#C49A6C;font-size:0.9rem;margin-top:8px">© Madera Fina con Luis Lobón</p>
+    <button id="btnStart" style="background:#C8922A;color:#1a0a00;border:none;padding:14px 36px;font-size:18px;font-weight:bold;border-radius:8px;cursor:pointer;margin-top:14px;font-family:Courier New,monospace">¡JUGAR DE NUEVO!</button>`;
+  ov.classList.remove('hidden');
+  document.getElementById('btnStart').addEventListener('click',iniciar);
+}
+
+function iniciar(){
+  G.nivel=1; G.puntos=0; G.vidas=3;
+  G.estado='jugando'; G.tick=0;
+  G.poderActivo=false; G.poderTimer=0;
+  generarNivel(1);
+  document.getElementById('overlay').classList.add('hidden');
+  document.getElementById('uiPoder').style.display='none';
+}
+
+// ── LOOP ──
+function gameLoop(){
+  procesarInput();
+  update();
+  draw();
+  requestAnimationFrame(gameLoop);
+}
+
+// INIT
+document.getElementById('btnStart').addEventListener('click',iniciar);
+addMobileControls();
+gameLoop();
+</script>
+</body>
+</html>
